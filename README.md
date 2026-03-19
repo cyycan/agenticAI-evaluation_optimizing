@@ -1,7 +1,5 @@
 # Evaluating & Optimizing AI Agents
 
-> **Live Class Notes**
-
 A comprehensive guide to evaluating, optimizing, and deploying AI agents in production. Covers evaluation frameworks, prompt engineering, fine-tuning, and inference optimization techniques.
 
 ---
