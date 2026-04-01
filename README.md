@@ -6,29 +6,58 @@ A comprehensive guide to evaluating, optimizing, and deploying AI agents in prod
 
 ## Table of Contents
 
-1. [AI Agent Evaluation](#1-ai-agent-evaluation)
-   - [Task Success & Outcome Quality](#task-success--outcome-quality)
-   - [Rule-Based Evaluation (BLEU & ROUGE)](#rule-based-evaluation-bleu--rouge)
-   - [Learned Metrics (BERTScore, COMET)](#learned-metrics-bertscore-comet)
-   - [Human Evaluation](#human-evaluation)
-   - [LLM-as-a-Judge](#llm-as-a-judge)
-   - [Interaction Quality & User Experience](#interaction-quality--user-experience)
-   - [Performance, Reliability & Efficiency](#performance-reliability--efficiency)
-2. [Agent Operational Readiness](#2-agent-operational-readiness)
-   - [Observability & Logging](#observability--logging)
-   - [Common Monitoring Tools](#common-monitoring-tools)
-   - [Product Metrics](#product-metrics)
-3. [Prompt Engineering vs Fine-Tuning](#3-prompt-engineering-vs-fine-tuning)
-   - [Prompt Engineering Best Practices](#prompt-engineering-best-practices)
-   - [Fine-Tuning](#fine-tuning)
-   - [When to Use Each](#when-to-use-each)
-4. [Optimizing Inference Speed & Model Costs](#4-optimizing-inference-speed--model-costs)
-   - [GPU Landscape](#gpu-landscape)
-   - [Quantization](#a-quantization)
-   - [Model Pruning](#b-model-pruning)
-   - [Distillation](#c-distillation)
-   - [Inference Optimization Techniques](#inference-optimization-techniques)
-   - [Deployment Strategies](#deployment-strategies)
+1. [Why Evals Matter](#0-why-evals-matter)
+2. [AI Agent Evaluation](#1-ai-agent-evaluation)
+   * [Pre-Deployment Evaluations](#pre-deployment-evaluations)
+     * [Create a Ground Truth Dataset](#step-1-create-a-ground-truth-dataset)
+     * [Identify Relevant Metrics](#step-2-identify-relevant-metrics)
+     * [Calculate Scores Against Ground Truth](#step-3-calculate-scores-against-ground-truth)
+     * [Integrate Evals into Deployment Pipelines](#step-4-integrate-evals-into-deployment-pipelines)
+   * [Evaluation Metrics Deep Dive](#evaluation-metrics-deep-dive)
+     * [Rule-Based Evaluation (BLEU & ROUGE)](#rule-based-evaluation-bleu--rouge)
+     * [Learned Metrics (BERTScore, COMET)](#learned-metrics-bertscore-comet)
+     * [RAG Evaluation Metrics](#rag-evaluation-metrics)
+     * [Task-Specific Metrics](#task-specific-metrics)
+     * [Responsibility Metrics](#responsibility-metrics)
+     * [Human Evaluation](#human-evaluation)
+     * [LLM-as-a-Judge](#llm-as-a-judge)
+   * [Post-Deployment Evaluations & Data Flywheels](#post-deployment-evaluations--data-flywheels)
+   * [Interaction Quality & User Experience](#interaction-quality--user-experience)
+   * [Performance, Reliability & Efficiency](#performance-reliability--efficiency)
+3. [Agent Operational Readiness](#2-agent-operational-readiness)
+   * [Observability & Logging](#observability--logging)
+   * [Common Monitoring Tools](#common-monitoring-tools)
+   * [Product Metrics](#product-metrics)
+4. [Prompt Engineering vs Fine-Tuning](#3-prompt-engineering-vs-fine-tuning)
+   * [Prompt Engineering Best Practices](#prompt-engineering-best-practices)
+   * [Fine-Tuning](#fine-tuning)
+   * [When to Use Each](#when-to-use-each)
+5. [Optimizing Inference Speed & Model Costs](#4-optimizing-inference-speed--model-costs)
+   * [GPU Landscape](#gpu-landscape)
+   * [Quantization](#a-quantization)
+   * [Model Pruning](#b-model-pruning)
+   * [Distillation](#c-distillation)
+   * [Inference Optimization Techniques](#inference-optimization-techniques)
+   * [Deployment Strategies](#deployment-strategies)
+
+---
+
+## 0. Why Evals Matter
+
+> **The "evals-first" principle: Don't treat evals as an afterthought — make them a cornerstone of your development process.**
+
+Evaluating LLM-based applications is inherently challenging. Unlike traditional software, LLMs produce probabilistic outputs that can vary on every run — there is no single correct answer for any given input. This variability means specialised evaluation techniques ("evals") are required.
+
+There are four key reasons evals are critical:
+
+| Reason | Description |
+| --- | --- |
+| **Establish performance standards** | Evaluation sets benchmarks that guide design choices (prompts, hyperparameters, retrieval strategies) and provide directional outcomes for each iteration. |
+| **Ensure consistent, reliable outputs** | Regular evals identify and mitigate issues that lead to unpredictable or erroneous outputs, building trust among users and stakeholders. |
+| **Guide improvement** | Continuous evaluation highlights where the system excels and where it falls short, enabling targeted improvements to specific components. |
+| **Enable regression testing** | When changes are made to prompts, design choices or underlying algorithms, evals verify those changes don't degrade quality. |
+
+Evaluating LLM systems falls into two categories: **pre-deployment evaluations** (during development) and **post-deployment evaluations** (in production). Both are essential and serve different purposes.
 
 ---
 
@@ -44,20 +73,149 @@ There are three main evaluation dimensions:
 
 ---
 
-### Task Success & Outcome Quality
+## Pre-Deployment Evaluations
 
-The most fundamental question: *Did the agent achieve the intended task?*
+Pre-deployment evaluations focus on assessing LLM systems during the development stage — before the system goes live. This phase is critical for:
 
-- **Simple tasks:** Yes/no outcomes — e.g., "Did it book the meeting?"
-- **Complex tasks:** Require richer evaluation methods:
+* **Performance measurement and benchmarking:** Using a variety of metrics, developers can benchmark capabilities, compare model versions, and understand the impact of architectural choices.
+* **Ensuring regression-free updates:** Changes in codebase, model parameters, or data can introduce unintended regressions. Regular pre-deployment evals catch these before they reach users.
 
-| Method | Description |
-|---|---|
-| Rule-based (BLEU / ROUGE) | Surface-level n-gram overlap |
-| Learned models (BERTScore, COMET, BLEURT) | Semantic similarity via embeddings |
-| Human evaluation | Score relevance, clarity, and helpfulness |
-| LLM-as-a-Judge | Use another model to approximate human judgment at scale |
 ---
+
+### Step 1: Create a Ground Truth Dataset
+
+The first and most critical step in evaluating LLM systems is creating a robust **ground truth dataset** — a set of question-answer pairs generated by expert human users that serve as a benchmark for evaluating the LLM's performance.
+
+**Why ground truth matters:**
+Ground truth data provides a reference point against which the model's outputs can be compared. It should:
+- Be representative of the types of questions end users will ask in production
+- Cover a diverse range of scenarios and contexts
+- Be created by domain experts who understand user behaviour
+
+**Why human expertise is required:**
+LLMs do not understand user behaviour and the specific context of your business domain. While they can generate plausible questions and answers, these may not accurately reflect the types of queries your users will ask. Human experts:
+- Bring deep contextual knowledge of the business domain
+- Ensure questions and answers are realistic and contextually accurate
+- Catch quality issues that automated generation would miss
+
+#### Can LLMs create a ground truth?
+
+LLMs can *assist* in generating ground truth data, but should not be solely relied upon. Here is why:
+
+| Limitation | Description |
+| --- | --- |
+| **No understanding of user behaviour** | LLMs can generate plausible Q&A pairs, but these may not reflect the specific queries your users will actually ask. |
+| **Human oversight is necessary** | Domain experts must review and refine LLM-generated datasets for realism and contextual accuracy. |
+| **Quality and relevance must be ensured** | Human oversight guarantees questions adhere to the business's standards and user expectations. |
+
+> **Example:** A good ground truth dataset for a RAG application includes not just query-answer pairs but also the relevant passages from the knowledge base. See [this BioASQ example](https://huggingface.co/datasets/rag-datasets/rag-mini-bioasq?row=0) for reference.
+
+---
+
+### Step 2: Identify Relevant Metrics
+
+Selecting appropriate evaluation metrics is crucial. The choice of metric depends on the specific use case — different applications require measuring different aspects of the model's performance.
+
+#### Core LLM evaluation metrics
+
+| Metric | Definition | Why it matters |
+| --- | --- | --- |
+| **Answer relevancy** | How relevant the provided answer is to the given question | Irrelevant answers confuse or frustrate users, diminishing the value of the application. |
+| **Coherence** | The logical flow and clarity of generated text; whether the response is internally consistent | Coherent responses are easier for users to understand. Critical for customer support, educational tools. |
+| **Contextual relevance** | How well the model's output aligns with the broader context provided | Ensures responses are appropriate and meaningful within the surrounding conversation or content. |
+| **Responsibility metrics** | Ethical and appropriate nature of the output: biases, harmful content, compliance with ethical standards | Prevents spread of misinformation, harmful stereotypes, and unethical content. Builds user trust. |
+
+---
+
+### RAG Evaluation Metrics
+
+For Retrieval-Augmented Generation (RAG) systems, evaluation requires a specific set of metrics covering both the retrieval and generation stages — known as the **RAG triad**:
+
+| Stage | Metric | Definition |
+| --- | --- | --- |
+| **Generation** | **Faithfulness** | How factually accurate the generated answer is relative to the retrieved context |
+| **Generation** | **Answer relevancy** | How relevant the generated answer is to the question |
+| **Retrieval** | **Context precision** | The signal-to-noise ratio of retrieved context (are the retrieved chunks relevant?) |
+| **Retrieval** | **Context recall** | Can the system retrieve *all* relevant information required to answer the question? |
+
+> **Important:** Some metrics — notably **context recall** — cannot be measured without ground truth. This is one reason why LLM-as-a-judge cannot fully replace ground-truth-based evaluation.
+
+Libraries such as **DeepEval** and **Relari-ai** use NLP models and LLMs to calculate these metrics, computing them via leveraging other LLMs, NLP models, or traditional code functions.
+
+---
+
+### Task-Specific Metrics
+
+Most evaluation metrics provide a broad assessment of LLM performance. However, to understand how well the system performs *specific tasks*, you will need metrics tailored to those tasks.
+
+**Why task-specific metrics are necessary:** Generic metrics may not reveal how well the system performs the particular functionality users rely on. Custom metrics provide detailed insights into model effectiveness for each specific application.
+
+**Example — Abstractive Summarisation (Kryscinski et al., 2019):**
+
+| Metric | Detail |
+| --- | --- |
+| **Fluency** | How grammatical and readable the summary is |
+| **Coherence** | How well the summary flows and connects ideas |
+| **Consistency** | Whether the summary is factually consistent with the source |
+| **Relevance** | How well the summary captures the key ideas of the source |
+
+---
+
+### Responsibility Metrics
+
+Responsibility metrics assess whether the model's output is ethical and appropriate. This includes checking for:
+
+* **Bias detection** — Does the model reinforce demographic, cultural, or factual biases?
+* **Harmful content** — Does the output include content that is dangerous, offensive, or misleading?
+* **Compliance with ethical standards** — Does the system adhere to the organisation's ethical guidelines and relevant legal requirements?
+
+Tools like **Giskard** can be integrated into your pipeline to automatically scan for harmful outputs, hallucinations, and sensitive information disclosure (see Step 4 below).
+
+---
+
+### Step 3: Calculate Scores Against Ground Truth
+
+For each question in your ground truth dataset, use the LLM's answer to compute the relevant metrics, then make metric-driven decisions about system design.
+
+**Connecting metrics to system changes:**
+
+| Metric issue | Potential fix |
+| --- | --- |
+| Low context recall for short factual answers | Reduce chunk sizes |
+| Low precision even at high values of K | Add reranking of retrieved chunks |
+| Low faithfulness | Revise prompt to emphasise grounding in context |
+| Low coherence | Adjust generation temperature or revise prompt structure |
+
+Every component of the LLM workflow — prompts, inference parameters, chunking strategy, retrieval mechanisms, choice of embeddings — should be tuned based on observed metrics.
+
+#### Ground truth vs LLM-as-judge
+
+There is an emerging trend to use a strong LLM (e.g. GPT-4) as a reference-free (ground-truth-free) metric evaluator — sometimes called "LLM-as-judge." The [G-eval framework](https://arxiv.org/abs/2303.16634) is a notable example, and GPT-4 shows strong correlation with human evaluators when used this way.
+
+However, **ground truth evaluations provide greater reliability and granularity** than LLM-as-judge alone. Some metrics (like context recall) cannot be measured without ground truth. Combining both approaches is recommended: use LLM-as-judge for directional insights and rapid iteration, and ground truth evals for rigorous quality measurement.
+
+---
+
+### Step 4: Integrate Evals into Deployment Pipelines
+
+To ensure your LLM system consistently meets performance criteria, evaluations must become part of your deployment pipeline — not just a one-off manual check.
+
+**Automated testing in CI/CD:**
+* Tests run automatically with every commit and before each deployment release
+* This ensures code changes don't introduce errors or degrade performance
+* Unit tests for LLMs can cover data preprocessing, ingestion stages, and the model output itself
+
+**Automated scanning with Giskard:**
+Tools like [Giskard](https://www.giskard.ai/) run scans as part of your deployment pipeline to test your LLM on multiple aspects including:
+* Hallucination detection
+* Harmfulness checks
+* Sensitive information disclosure
+
+> **Important:** Write automated tests for the *data preprocessing and ingestion stages* as well, not just the model output.
+
+---
+
+## Evaluation Metrics Deep Dive
 
 ### Rule-Based Evaluation (BLEU & ROUGE)
 
@@ -68,7 +226,7 @@ Rule-based metrics rely on **n-gram overlap** — contiguous sequences of n word
 Given the sentence *"the cat sat on the mat"*:
 
 | n | Type | Examples |
-|---|---|---|
+| --- | --- | --- |
 | 1 | Unigram | the, cat, sat, on, the, mat |
 | 2 | Bigram | the cat, cat sat, sat on, on the, the mat |
 | 3 | Trigram | the cat sat, cat sat on, sat on the, on the mat |
@@ -76,9 +234,9 @@ Given the sentence *"the cat sat on the mat"*:
 **BLEU vs ROUGE:**
 
 | Aspect | BLEU | ROUGE |
-|---|---|---|
+| --- | --- | --- |
 | Measures | Precision of n-gram overlap | Recall (or F1) of n-gram or sequence overlap |
-| Best for | Machine translation, structured output | Summarization, flexible generation |
+| Best for | Machine translation, structured output | Summarisation, flexible generation |
 | Bias | Rewards concise, exact matches | Rewards coverage and phrasing variety |
 
 ---
@@ -89,11 +247,11 @@ Given the sentence *"the cat sat on the mat"*:
 
 Evaluates **semantic similarity** using contextual embeddings and cosine similarity.
 
-1. Pass both the reference and candidate sentences through a pre-trained model (e.g., BERT)
+1. Pass both the reference and candidate sentences through a pre-trained model (e.g. BERT)
 2. BERT outputs a contextual embedding vector for each token
 3. Compute pairwise cosine similarity between token embeddings across reference and candidate
-   - e.g., "cold" vs "freezing" → high similarity
-   - e.g., "weather" vs "it" → lower similarity
+   * e.g. "cold" vs "freezing" → high similarity
+   * e.g. "weather" vs "it" → lower similarity
 
 #### COMET
 
@@ -105,17 +263,19 @@ Goal: Predict **human judgment** (fluency, adequacy) for a translation using reg
 4. **Regression:** Feedforward network predicts a human score (trained with MSE loss)
 
 **Why learned metrics over BLEU/ROUGE?**
-- Use pre-trained LMs fine-tuned to match human ratings
-- Better at capturing fluency, adequacy, and semantic meaning
+
+* Use pre-trained LMs fine-tuned to match human ratings
+* Better at capturing fluency, adequacy, and semantic meaning
 
 ---
 
 ### Human Evaluation
 
 When machine metrics fall short, human annotators evaluate:
-- Relevance and accuracy
-- Clarity and helpfulness
-- Overall quality
+
+* Relevance and accuracy
+* Clarity and helpfulness
+* Overall quality
 
 **Chatbot Arena** (LMSYS) is a notable crowdsourced benchmark where users compare LLM outputs head-to-head without knowing which model generated them, driving rankings based on real-world preferences.
 
@@ -126,60 +286,102 @@ When machine metrics fall short, human annotators evaluate:
 Instead of relying on human raters or hardcoded metrics, an LLM acts as the evaluator.
 
 **Input Types:**
-- **Point-wise:** One output evaluated independently — *"Rate this response from 1–5 stars."*
-- **Pair-wise / List-wise:** Outputs compared against each other — *"Which of these two responses is better?"*
+
+* **Point-wise:** One output evaluated independently — *"Rate this response from 1–5 stars."*
+* **Pair-wise / List-wise:** Outputs compared against each other — *"Which of these two responses is better?"*
 
 **Output Types:**
-- **Score:** Numerical rating (e.g., 3 out of 5)
-- **Ranking:** Orders outputs from best to worst
-- **Selection:** Pass/fail against a quality threshold
+
+* **Score:** Numerical rating (e.g. 3 out of 5)
+* **Ranking:** Orders outputs from best to worst
+* **Selection:** Pass/fail against a quality threshold
 
 **Validation:** GPT-4 as a judge agrees with individual human annotators ~85% of the time, compared to 81% inter-human agreement — suggesting LLMs can be more consistent than individual humans.
 
 **Known Biases:**
-- **Length bias:** Longer responses score higher
-- **Position bias:** First response scores higher
-- **Narcissism bias:** A model scores its own responses higher
-- **Cost-quality trade-off:** Better judges cost more to run
+
+* **Length bias:** Longer responses score higher
+* **Position bias:** First response scores higher
+* **Narcissism bias:** A model scores its own responses higher
+* **Cost-quality trade-off:** Better judges cost more to run
+
+**Limitations vs ground truth:**
+The reliability and granularity from using a ground truth for evals is significantly better than using an evaluator LLM alone. Some metrics — particularly context recall — cannot be measured without ground truth. Use LLM-as-judge for fast directional insights; use ground truth for rigorous measurement.
 
 ---
 
-### Interaction Quality & User Experience
+## Post-Deployment Evaluations & Data Flywheels
+
+After deployment, a robust observability layer is essential to understand where the system may be failing or underperforming.
+
+**Observability practices:**
+* Monitor interactions to capture real-time data on how the LLM handles different questions and scenarios
+* Set up continuous monitoring to detect anomalies and performance issues
+* Schedule periodic evaluation sessions with domain experts
+* Create a feedback mechanism where users can report issues directly from the interface
+* While automated tests provide continuous oversight, **human evaluations are still essential** for capturing nuances that automated systems miss
+
+### Data Flywheels and Continuous LLM Enhancement
+
+A **data flywheel** is a self-reinforcing loop that uses data collected from production to drive ongoing improvements. For LLM systems, this means using real-time observations and feedback to refine the workflow — making it more accurate, relevant, and effective over time.
+
+```
+Production observations → Insights on failures/gaps
+         ↓
+Make targeted changes (prompts, chunking, embeddings, retrieval)
+         ↓
+Collect new production data from improved system
+         ↓
+Repeat — perpetually improving
+```
+
+**Key points about the data flywheel:**
+* Metrics are not static — they may need to change over time as you learn more about end-user behaviour and discover new failure modes in production
+* Every component of the workflow can be tuned: chunking strategy, embeddings, prompts, retrieval methods, inference parameters
+* The beauty of the flywheel is its cyclical nature: each improvement generates new data, which yields fresh insights for further refinement
+
+---
+
+## Interaction Quality & User Experience
 
 How does the user *feel* about their interaction?
 
 | Metric | Description |
-|---|---|
+| --- | --- |
 | **Satisfaction** | CSAT surveys, NPS ratings |
 | **Containment rate** | % of queries fully handled without human escalation |
 | **Escalation rate** | High rate signals the agent isn't trusted or capable enough |
 | **Conversation depth** | Number of turns until issue is resolved |
 
 **Systematic feedback collection:**
-- In-App signals (👍/👎, report buttons)
-- Active solicitation after low-confidence responses
-- Behavioral signals: edits, re-asks, time-to-next-query
-- Tooling: Humanloop, TruLens, LangSmith
+
+* In-App signals (👍/👎, report buttons)
+* Active solicitation after low-confidence responses
+* Behavioural signals: edits, re-asks, time-to-next-query
+* Tooling: Humanloop, TruLens, LangSmith
 
 **Turning feedback into improvements:**
-- Fine-tune models with high-quality labeled data
-- Refine prompts based on common issues
-- Augment training data to fill knowledge gaps
+
+* Fine-tune models with high-quality labelled data
+* Refine prompts based on common issues
+* Augment training data to fill knowledge gaps
 
 ---
 
-### Performance, Reliability & Efficiency
+## Performance, Reliability & Efficiency
 
 **Performance:**
-- **Latency:** Goal is sub-500ms for good UX
-- **Token usage:** More tokens = higher API costs; monitor average tokens/request
-- **Compute usage:** Watch CPU, GPU, and memory for bottlenecks
-- **Throughput:** Requests the system can handle per second under load
+
+* **Latency:** Goal is sub-500ms for good UX
+* **Token usage:** More tokens = higher API costs; monitor average tokens/request
+* **Compute usage:** Watch CPU, GPU, and memory for bottlenecks
+* **Throughput:** Requests the system can handle per second under load
 
 **Reliability:**
-- **Error rate:** Track failures, timeouts, bad responses
-- **OOD Handling:** Does it recognize and gracefully reject out-of-scope queries?
-- **Graceful degradation:** If tools fail, the agent should offer fallback paths
+
+* **Error rate:** Track failures, timeouts, bad responses
+* **OOD Handling:** Does it recognise and gracefully reject out-of-scope queries?
+* **Graceful degradation:** If tools fail, the agent should offer fallback paths
 
 ---
 
@@ -189,41 +391,46 @@ How does the user *feel* about their interaction?
 
 Effective evaluation is impossible without comprehensive logging. Essential logs include:
 
-- **Trace internal reasoning:** Prompts, tool calls, intermediate model outputs
-- **Metadata:** Timestamps, token counts, user/session IDs for correlation
-- **Feedback signals:** Thumbs up/down, corrections, rewrites, abandonment
-- **Key events:** User queries, API responses, tool failures, model errors
+* **Trace internal reasoning:** Prompts, tool calls, intermediate model outputs
+* **Metadata:** Timestamps, token counts, user/session IDs for correlation
+* **Feedback signals:** Thumbs up/down, corrections, rewrites, abandonment
+* **Key events:** User queries, API responses, tool failures, model errors
 
 **Alerts & Monitoring:**
-- Set alerts for metric anomalies (error rate spikes, latency surges)
-- Use centralized dashboards (Grafana, W&B) to unify logs and metrics
-- Review trends regularly: rising latency, growing cost, performance degradation
+
+* Set alerts for metric anomalies (error rate spikes, latency surges)
+* Use centralised dashboards (Grafana, W&B) to unify logs and metrics
+* Review trends regularly: rising latency, growing cost, performance degradation
 
 ---
 
 ### Common Monitoring Tools
 
 | Tool | Focus | Best For | Watch Out For |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | **LangSmith** | LangChain debugging & eval | Teams building agents with LangChain needing step-level introspection | Not ideal for non-LangChain stacks |
 | **Arize AI** | ML-first model observability | Monitoring LLM/ML performance, drift, and quality in production | Learning curve; can be pricey |
 | **Datadog** | Full-stack observability | Unified monitoring across infra, APIs, and apps including AI | Complex setup; not ML-specific |
 | **Helicone** | LLM API logging & caching | Quick logging, cost tracking, and caching for LLM API calls | Limited advanced features |
+| **Giskard** | LLM safety & quality testing | Automated scanning for hallucinations, harmfulness, and sensitive info in CI/CD | Primarily focused on safety/quality, not infrastructure monitoring |
 
 **Quick decision guide:**
-- **LangSmith** → LangChain agent step tracing
-- **Arize** → Model-level quality, tracing, and evaluation
-- **Datadog** → Full-stack infra monitoring with AI add-ons
-- **Helicone** → Simple API logging and cost control with zero infra overhead
+
+* **LangSmith** → LangChain agent step tracing
+* **Arize** → Model-level quality, tracing, and evaluation
+* **Datadog** → Full-stack infra monitoring with AI add-ons
+* **Helicone** → Simple API logging and cost control with zero infra overhead
+* **Giskard** → Automated pre-deployment safety and quality scanning in CI/CD pipelines
 
 ---
 
 ### Product Metrics
 
 **User Engagement:**
-- **Active users:** Unique individuals interacting with the agent over time
-- **Interaction volume:** Total number of exchanges or sessions
-- **Session duration:** How long users remain engaged
+
+* **Active users:** Unique individuals interacting with the agent over time
+* **Interaction volume:** Total number of exchanges or sessions
+* **Session duration:** How long users remain engaged
 
 ---
 
@@ -235,14 +442,14 @@ Effective evaluation is impossible without comprehensive logging. Essential logs
 
 #### 1. Clear Instructions and Constraints
 
-- Be specific — provide detailed instructions with context
-- Specify output format (JSON, bullet points, tables)
-- Define tone and constraints ("use a formal tone", "do not include sensitive topics")
-- Use delimiters to separate sections:
+* Be specific — provide detailed instructions with context
+* Specify output format (JSON, bullet points, tables)
+* Define tone and constraints ("use a formal tone", "do not include sensitive topics")
+* Use delimiters to separate sections:
 
 ```
 ### Instructions:
-You are an AI assistant helping students learn history. Summarize the following text in two sentences.
+You are an AI assistant helping students learn history. Summarise the following text in two sentences.
 
 ### Context:
 This is for a high school student preparing for a quiz.
@@ -252,8 +459,9 @@ The Treaty of Versailles was signed in 1919 after World War I...
 ```
 
 Or with XML tags:
-```xml
-<instructions>Summarize the following text in two sentences.</instructions>
+
+```
+<instructions>Summarise the following text in two sentences.</instructions>
 <context>High school student preparing for a quiz.</context>
 <user_input>The Treaty of Versailles was signed in 1919...</user_input>
 ```
@@ -270,30 +478,31 @@ Step 3: Combine the answers to solve the original question.
 
 Example prompt templates:
 
-- **Research-style:** *"To answer the final question, first list sub-questions that would help. Then answer each, and finally give the main answer."*
-- **Decision-making:** *"First ask yourself what factors are important to consider. Then find answers to each one. Finally, make a decision based on the answers."*
-- **Fact-checking:** *"Start by asking what facts would confirm or refute this claim. Then answer those one by one. Finally, say whether the claim holds up."*
-- **Tool-use (ReAct style):** *"Ask what info you need from a tool. List and answer each question using that tool, then synthesize a final answer."*
+* **Research-style:** *"To answer the final question, first list sub-questions that would help. Then answer each, and finally give the main answer."*
+* **Decision-making:** *"First ask yourself what factors are important to consider. Then find answers to each one. Finally, make a decision based on the answers."*
+* **Fact-checking:** *"Start by asking what facts would confirm or refute this claim. Then answer those one by one. Finally, say whether the claim holds up."*
+* **Tool-use (ReAct style):** *"Ask what info you need from a tool. List and answer each question using that tool, then synthesise a final answer."*
 
 #### 3. Iterative Refinement and Few-Shot Learning
 
-- Treat prompt writing as an experiment — change wording, structure, or examples
-- Include **few-shot examples** (input-output pairs) to show the model what good looks like
-- A/B test variants to measure response quality
-- Add error-handling constraints: *"If you don't know, say you don't know."*
-- Maintain a **prompt library** of proven patterns for different tasks
+* Treat prompt writing as an experiment — change wording, structure, or examples
+* Include **few-shot examples** (input-output pairs) to show the model what good looks like
+* A/B test variants to measure response quality
+* Add error-handling constraints: *"If you don't know, say you don't know."*
+* Maintain a **prompt library** of proven patterns for different tasks
 
 ---
 
 ### Fine-Tuning
 
-Goal: Teach a pre-trained model new patterns or behavior by updating its weights on task-specific data.
+Goal: Teach a pre-trained model new patterns or behaviour by updating its weights on task-specific data.
 
 **Steps:**
-1. **Collect Labeled Data** — (Input, Desired Output) pairs; questions & ideal answers, chat transcripts, etc.
-2. **Prepare the Dataset** — Clean, tokenize, and ensure consistent formatting (e.g., JSONL)
+
+1. **Collect Labelled Data** — (Input, Desired Output) pairs; questions & ideal answers, chat transcripts, etc.
+2. **Prepare the Dataset** — Clean, tokenise, and ensure consistent formatting (e.g. JSONL)
 3. **Choose a Base Model** — General-purpose model (GPT, LLaMA); consider size vs compute constraints
-4. **Run Supervised Fine-Tuning** — Train with gradient descent; minimize difference between model output and target
+4. **Run Supervised Fine-Tuning** — Train with gradient descent; minimise difference between model output and target
 5. **Validate and Test** — Evaluate on held-out data; adjust hyperparameters if needed
 6. **Deploy & Monitor** — Watch for model drift, hallucinations, or task failures
 
@@ -302,7 +511,7 @@ Goal: Teach a pre-trained model new patterns or behavior by updating its weights
 Instead of updating all weights, PEFT modifies only a small subset — cheaper, faster, and easier to deploy.
 
 | Technique | What It Does |
-|---|---|
+| --- | --- |
 | **LoRA** (Low-Rank Adaptation) | Injects trainable rank-decomposed matrices into existing layers |
 | **Prefix Tuning** | Learns task-specific "prefix" vectors prepended to input embeddings |
 | **Adapter Layers** | Adds small trainable modules between frozen layers |
@@ -313,12 +522,12 @@ Instead of updating all weights, PEFT modifies only a small subset — cheaper, 
 ### When to Use Each
 
 | Consideration | Prompt Engineering | Fine-Tuning |
-|---|---|---|
+| --- | --- | --- |
 | **Task Complexity** | Simple, well-defined tasks | Complex, domain-specific tasks |
-| **Data Availability** | Limited or no training data | Substantial high-quality labeled data available |
+| **Data Availability** | Limited or no training data | Substantial high-quality labelled data available |
 | **Cost & Effort** | Lower initial cost | Higher initial cost for data prep and training |
 | **Performance** | Good for quick iterations | Higher accuracy, more nuanced responses |
-| **Generalization** | Base model already performs reasonably | Base model struggles with domain nuances |
+| **Generalisation** | Base model already performs reasonably | Base model struggles with domain nuances |
 
 ---
 
@@ -327,7 +536,7 @@ Instead of updating all weights, PEFT modifies only a small subset — cheaper, 
 ### GPU Landscape
 
 | GPU | Year | VRAM | TFLOPs | Price | Cloud Cost |
-|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
 | V100 | 2017 | 16/32 GB | 125 (FP16) | $1,500 | $2.50/hr |
 | T4 | 2018 | 16 GB | 65 (INT8) | $450 | $0.40/hr |
 | A10 | 2021 | 24 GB | 150 (INT8) | $1,000 | $1.00/hr |
@@ -339,7 +548,7 @@ Instead of updating all weights, PEFT modifies only a small subset — cheaper, 
 **Memory rule of thumb:** Each parameter ≈ 2 bytes (FP16). Add ~30% overhead for activations and KV cache.
 
 | Model Size | Example | FP16 VRAM | INT8 VRAM | Runs On |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | 1B | DistilGPT2 | 3 GB | 1.5 GB | Any GPU |
 | 7B | LLaMA 2 7B | 20 GB | 10 GB | RTX 3090, A10, A100 |
 | 70B | LLaMA 2 70B | 200 GB | 75 GB | B100, Multi-GPU |
@@ -352,15 +561,16 @@ Instead of updating all weights, PEFT modifies only a small subset — cheaper, 
 
 **Intuition:** Reduce the numerical precision of model weights to save memory and speed up inference.
 
-- FP32 → FP16: 2× memory reduction
-- FP32 → INT8: 4× memory reduction
+* FP32 → FP16: 2× memory reduction
+* FP32 → INT8: 4× memory reduction
 
 **Why it works:**
-- **Smaller memory footprint** — INT8 model is 4× smaller than FP32; loads faster
-- **Faster data transfer** — Moving smaller data types from memory to compute is quicker
-- **Faster computation** — Modern CPUs/GPUs perform integer operations faster than floating-point
 
-**Tooling:** ONNX Runtime, TensorRT — act as a compiler + runtime for executing quantized graphs efficiently on GPU.
+* **Smaller memory footprint** — INT8 model is 4× smaller than FP32; loads faster
+* **Faster data transfer** — Moving smaller data types from memory to compute is quicker
+* **Faster computation** — Modern CPUs/GPUs perform integer operations faster than floating-point
+
+**Tooling:** ONNX Runtime, TensorRT — act as a compiler + runtime for executing quantised graphs efficiently on GPU.
 
 **Tradeoff:** May result in slight accuracy loss.
 
@@ -371,13 +581,14 @@ Instead of updating all weights, PEFT modifies only a small subset — cheaper, 
 **Intuition:** Set some weights to zero to save storage and compute.
 
 | Method | Description | Hardware |
-|---|---|---|
+| --- | --- | --- |
 | **Unstructured Pruning** | Removes individual weights → sparse models | Requires special hardware/software |
 | **Structured Pruning** | Removes entire neurons or attention heads | Works on standard hardware (A100, H100) |
 
 **When to use each:**
-- **Unstructured** → Maximum compression with the right infrastructure
-- **Structured** → Real-world latency/throughput gains on typical hardware
+
+* **Unstructured** → Maximum compression with the right infrastructure
+* **Structured** → Real-world latency/throughput gains on typical hardware
 
 **Tradeoff:** Potential accuracy loss if done aggressively.
 
@@ -388,10 +599,11 @@ Instead of updating all weights, PEFT modifies only a small subset — cheaper, 
 **Intuition:** Train a small "student" model to mimic a large "teacher" model.
 
 **Process:**
+
 1. Pass training data through both the **teacher** (large pretrained model) and **student** (smaller model)
 2. Backpropagate two loss signals:
-   - **Distillation Loss** — Student mimics teacher's output distribution
-   - **Cross-Entropy Loss** — Student matches true labels directly
+   * **Distillation Loss** — Student mimics teacher's output distribution
+   * **Cross-Entropy Loss** — Student matches true labels directly
 
 **Why not just train the student model directly?**
 The teacher's output logits contain richer information than hard labels alone, enabling faster and better learning.
@@ -403,7 +615,7 @@ The teacher's output logits contain richer information than hard labels alone, e
 ### Optimization Summary
 
 | Optimization | Summary | Tradeoff |
-|---|---|---|
+| --- | --- | --- |
 | **Quantization** | Reduce precision to shrink model size and latency up to 4× | Potential accuracy loss |
 | **Pruning** | Set weights to zero; requires sparse execution engine | Potential accuracy loss |
 | **Distillation** | Train a smaller model to mimic a larger one | Expensive to train; can modify architecture |
@@ -419,9 +631,9 @@ The teacher's output logits contain richer information than hard labels alone, e
 Low Dev Cost — Low Inference Cost
 ```
 
-- **Full Model** → Highest accuracy, minimal dev time, but expensive to deploy
-- **Quantization** → Lower inference cost, simple dev, but can hurt accuracy
-- **Distillation** → Balances accuracy and inference cost, but requires extra training
+* **Full Model** → Highest accuracy, minimal dev time, but expensive to deploy
+* **Quantization** → Lower inference cost, simple dev, but can hurt accuracy
+* **Distillation** → Balances accuracy and inference cost, but requires extra training
 
 ---
 
@@ -430,22 +642,25 @@ Low Dev Cost — Low Inference Cost
 #### Caching
 
 **KV Cache (Model Level):**
-- When generating token-by-token, transformers compute Key (K) and Value (V) matrices for all preceding tokens
-- KV cache stores these matrices to avoid recomputation on each new token
-- Non-negotiable for any conversational or autoregressive model
+
+* When generating token-by-token, transformers compute Key (K) and Value (V) matrices for all preceding tokens
+* KV cache stores these matrices to avoid recomputation on each new token
+* Non-negotiable for any conversational or autoregressive model
 
 **Semantic Cache (Application Level):**
-- Stores full queries and their final answers
-- Uses embeddings for semantic matching — not just exact matches
-- Example: "How can I change my password?" and "I forgot my login and need to reset it" resolve to the same cached answer
+
+* Stores full queries and their final answers
+* Uses embeddings for semantic matching — not just exact matches
+* Example: "How can I change my password?" and "I forgot my login and need to reset it" resolve to the same cached answer
 
 #### Batching
 
-Process multiple inference requests together to maximize GPU utilization and reduce per-request cost.
+Process multiple inference requests together to maximise GPU utilisation and reduce per-request cost.
 
 #### Speculative Decoding
 
 **Key intuitions:**
+
 1. Reviewing results is cheaper than generating them from scratch
 2. Not every token is equally hard to generate
 
@@ -453,29 +668,47 @@ A small "draft" model generates candidate tokens quickly; the large model verifi
 
 #### Software Enhancements
 
-- `scaled_dot_product_attention` (PyTorch)
-- **FlashAttention** — Memory-efficient attention implementation
-- **Group-Query Attention** — Reduces KV cache size for large models
+* `scaled_dot_product_attention` (PyTorch)
+* **FlashAttention** — Memory-efficient attention implementation
+* **Group-Query Attention** — Reduces KV cache size for large models
 
 ---
 
 ### Deployment Strategies
 
-- **Right-size models per task** — Don't use a 70B model for simple classification
-- **Hardware/model match** — Match quantization level and model size to available GPU VRAM
-- **Pay for what you use** — Consider managed APIs vs self-hosting based on traffic patterns
-- **Inference stack options:**
-  - Managed services (OpenAI, Anthropic, Together AI)
-  - **vLLM** — High-throughput inference server for self-hosted models
-  - **NVIDIA Triton** — Production inference serving for multiple model types
+* **Right-size models per task** — Don't use a 70B model for simple classification
+* **Hardware/model match** — Match quantisation level and model size to available GPU VRAM
+* **Pay for what you use** — Consider managed APIs vs self-hosting based on traffic patterns
+* **Inference stack options:**
+  + Managed services (OpenAI, Anthropic, Together AI)
+  + **vLLM** — High-throughput inference server for self-hosted models
+  + **NVIDIA Triton** — Production inference serving for multiple model types
 
 ---
 
 ## 5. Summary
 
 | Topic | What | How | Tools |
-|---|---|---|---|
-| **AI Agent Evaluation** | Task success, interaction quality, performance | Rule-based (BLEU, ROUGE), learned models, human eval, LLM-as-a-Judge | BERTScore, COMET, Chatbot Arena |
-| **Operational Readiness** | Observability, monitoring, feedback loops | Comprehensive logging, product metrics, user engagement | LangSmith, Arize AI, Datadog, Helicone |
-| **Prompt Engineering / Fine-Tuning** | Get more from your model | Clear prompts with examples and CoT; fine-tune with labeled data | PEFT, LoRA, HuggingFace |
+| --- | --- | --- | --- |
+| **Why Evals** | Performance, reliability, regression testing, improvement | Shift left — make evals a cornerstone, not an afterthought | — |
+| **Ground Truth** | The benchmark for all pre-deployment evaluation | Expert-created Q&A pairs; LLMs assist but humans validate | HuggingFace Datasets |
+| **Core Metrics** | Answer relevancy, coherence, contextual relevance, responsibility | Calculate against ground truth; use metric scores to drive system changes | DeepEval, Relari-ai |
+| **RAG Metrics** | Faithfulness, answer relevancy, context precision, context recall | RAG triad evaluation; context recall requires ground truth | DeepEval, RAGAS |
+| **Task-Specific Metrics** | Fluency, coherence, consistency, relevance (for summarisation etc.) | Tailor metrics to the specific task requirements | Custom evaluation scripts |
+| **Responsibility Metrics** | Bias, harmful content, ethical compliance | Automated scanning in CI/CD | Giskard |
+| **LLM-as-Judge** | Reference-free evaluation at scale | GPT-4 as evaluator; use alongside ground truth, not as a replacement | G-eval, TruLens |
+| **Data Flywheels** | Continuous improvement loop using production data | Observe → change workflow → collect new data → repeat | LangSmith, Arize AI |
+| **AI Agent Evaluation** | Task success, interaction quality, performance | Rule-based (BLEU, ROUGE), learned models, human eval | BERTScore, COMET, Chatbot Arena |
+| **Operational Readiness** | Observability, monitoring, feedback loops | Comprehensive logging, product metrics, user engagement | LangSmith, Arize AI, Datadog, Helicone, Giskard |
+| **Prompt Engineering / Fine-Tuning** | Get more from your model | Clear prompts with examples and CoT; fine-tune with labelled data | PEFT, LoRA, HuggingFace |
 | **Inference Optimization** | Reduce cost and latency | Quantization, pruning, distillation, caching, speculative decoding | ONNX, TensorRT, vLLM, FlashAttention |
+
+---
+
+## References
+
+* ThoughtWorks — [How to evaluate an LLM system](https://www.thoughtworks.com/en-gb/insights/blog/generative-ai/how-to-evaluate-an-LLM-system)
+* Kryscinski et al. (2019) — [Neural Text Summarization: A Critical Evaluation](https://arxiv.org/abs/1908.08960)
+* G-eval framework — [NLG Evaluation using GPT-4](https://arxiv.org/abs/2303.16634)
+* Relari-ai — [A Practical Guide to RAG Pipeline Evaluation](https://blog.relari.ai/a-practical-guide-to-rag-pipeline-evaluation-part-1-27a472b09893)
+* BioASQ Ground Truth Dataset — [RAG Mini BioASQ](https://huggingface.co/datasets/rag-datasets/rag-mini-bioasq?row=0)
