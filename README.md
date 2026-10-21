@@ -380,8 +380,9 @@ How does the user *feel* about their interaction?
 **Reliability:**
 
 * **Error rate:** Track failures, timeouts, bad responses
-* **OOD Handling:** Does it recognise and gracefully reject out-of-scope queries?
-* **Graceful degradation:** If tools fail, the agent should offer fallback paths
+* **OOD Handling:** Does it recognise and gracefully reject out of distribution handling
+* **Graceful degradation:** If tools fail, the agent should offer fallback paths; When a component breaks, the system drops non-essential features instead of going completely offline.
+* **Fault Tolerance:** The system detects errors and continues operating or recovers automatically without complete failure.
 
 ---
 
